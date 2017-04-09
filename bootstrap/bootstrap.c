@@ -443,19 +443,73 @@ int verify_taihen(void) {
 }
 
 int should_reinstall(void) {
+	SceCtrlData old = {0};
 	SceCtrlData buf;
+	int repeat = 0;
+	int reinstall_progress = 0;
+	char need_clear = 0;
 	int ret;
+	unsigned int reinstall_command[4] = {
+		SCE_CTRL_UP,
+		SCE_CTRL_DOWN,
+		SCE_CTRL_LEFT,
+		SCE_CTRL_RIGHT,
+	};
 
-	ret = sceCtrlPeekBufferPositive(0, &buf, 1);
-	LOG("sceCtrlPeekBufferPositive: 0x%x, 0x%x\n", ret, buf.buttons);
-	if (ret < 0) {
-		return 0;
+	while (1) {
+		ret = sceCtrlPeekBufferPositive(0, &buf, 1);
+		LOG("sceCtrlPeekBufferPositive: 0x%x, 0x%x\n", ret, buf.buttons);
+		if (ret < 0) {
+			return 0;
+		}
+		// prevent button hold
+		if (!buf.buttons) {
+			need_clear = 0;
+			continue;
+		}
+		if (need_clear) {
+			continue;
+		}
+		need_clear = 1;
+
+		if (buf.buttons == old.buttons) {
+			repeat += 1;
+		} else {
+			repeat = 1;
+		}
+
+		if (repeat == 1 && buf.buttons == reinstall_command[reinstall_progress]) {
+			reinstall_progress += 1;
+		} else {
+			reinstall_progress = 0;
+		}
+
+		DRAWF("\r                          \r");
+		if (reinstall_progress) {
+			for (int i = 0; i < reinstall_progress; i++) {
+				DRAWF("R ");
+			}
+
+			if (reinstall_progress == 4) {
+				ret = 1;
+				break;
+			}
+		} else {
+			for (int i = 0; i < repeat; i++) {
+				DRAWF("* ");
+			}
+
+			if (repeat == 3) {
+				ret = 0;
+				break;
+			}
+		}
+		old = buf;
 	}
-	if (buf.buttons & (SCE_CTRL_R1 | SCE_CTRL_RTRIGGER)) {
-		return 1;
-	} else {
-		return 0;
-	}
+
+	DRAWF("\n");
+	sceKernelDelayThread(1000 * 1000);
+	return ret;
 }
 
 static int load_paf() {
@@ -548,6 +602,9 @@ int module_start(SceSize argc, const void *args) {
 	DRAWF("Please demand a refund if you paid for this free software either on its own or as part of a bundle!\n\n");
 
 	cui_data.fg_color = 0xFFFF00FF;
+
+	DRAWF("Press the same button three times to continue.\nPress up, down, left, right to force reinstall.\n");
+
 	if (should_reinstall()) {
 		DRAWF("Forcing reinstall of taiHEN and molecularShell, configuration will be reset\n\n");
 		sceIoRemove("ux0:temp/app_work/MLCL00001/rec/config.bin");
@@ -573,7 +630,7 @@ int module_start(SceSize argc, const void *args) {
 			ret = install_taihen(PKG_URL_PREFIX);
 		} else {
 			DRAWF("taiHEN already installed and is the latest version\n");
-			DRAWF("(if you want to force reinstall, reboot your Vita and hold R1 while running the exploit)\n");
+			DRAWF("(if you want to force reinstall, reboot your Vita and press reinstall command while running the exploit)\n");
 			ret = 0;
 		}
 		if (ret < 0) {
@@ -593,7 +650,7 @@ int module_start(SceSize argc, const void *args) {
 			ret = install_pkg(PKG_URL_PREFIX);
 		} else {
 			DRAWF("molecularShell already installed and is the latest version\n");
-			DRAWF("(if you want to force reinstall, reboot your Vita and hold R1 while running the exploit)\n");
+			DRAWF("(if you want to force reinstall, reboot your Vita and press reinstall command while running the exploit)\n");
 			ret = 0;
 		}
 		if (ret < 0) {
